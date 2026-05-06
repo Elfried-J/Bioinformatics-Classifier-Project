@@ -64,17 +64,3 @@ The classifier maintains 89%+ accuracy even at 5% sequencing error rate — comp
 
 ---
 
-## Project structure
-├── app.py                     # Streamlit web app
-├── src/
-│   ├── download_sequences.py  # NCBI data download
-│   ├── features.py            # k-mer feature extraction
-│   ├── models.py              # SVM, RF, Logistic Regression
-│   ├── cnn_model.py           # 1D CNN in PyTorch
-│   ├── evaluate.py            # ROC curves and AUC scores
-│   └── metagenomics.py        # Short read simulation
-├── data/
-│   └── features.csv           # Extracted feature matrix
-├── results/
-│   └── figures/               # Confusion matrices, ROC curves
-└── requirements.txt
