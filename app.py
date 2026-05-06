@@ -81,7 +81,7 @@ def generate_random_sequence(species, length=500):
     return "".join(bases)
 
 # Tabs
-tab1, tab2, tab3 = st.tabs(["🔬 Classify Sequence", "🔄 Compare Sequences", "📁 Upload FASTA"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔬 Classify Sequence", "🔄 Compare Sequences", "📁 Upload FASTA", "🧫 Metagenomic Simulation"])
 
 # Tab 1 - single sequence
 with tab1:
@@ -269,3 +269,79 @@ with tab3:
 
             csv = results_df.to_csv(index=False)
             st.download_button("Download results as CSV", csv, "classification_results.csv", "text/csv")
+
+# Tab 4 - metagenomic simulation
+with tab4:
+    st.markdown("### Metagenomic read simulation")
+    st.caption("Test how well the classifier handles short noisy reads — simulating real Illumina sequencing conditions.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        read_length = st.slider("Read length (bp)", min_value=50, max_value=500, value=150, step=50)
+        error_rate = st.slider("Sequencing error rate", min_value=0.0, max_value=0.10, value=0.01, step=0.01, format="%.2f")
+        num_reads = st.slider("Reads per sequence", min_value=1, max_value=20, value=5)
+
+    with col2:
+        st.markdown("#### What this simulates")
+        st.markdown(f"""
+        - **Read length:** {read_length}bp fragments (Illumina short reads are typically 150bp)
+        - **Error rate:** {error_rate:.1%} random base substitutions per position
+        - **Real world:** Clinical metagenomics tools like Kraken2 face exactly this challenge
+        """)
+
+    sequence_input = st.text_area("Paste a DNA sequence to fragment and classify:",
+        height=100,
+        value="ATGCGATCGATCGATCGAATTCGATCGATCGATCGAATTCGATCGATCGATCGAATTCGATCGATCGATCGAATTCGATCGATCGATCGAATTCGATCGATCGATCGAATTCGATCGATCGATCGAATTCGATCGATCGATCGAATTCGATCGATCGATCG")
+
+    if st.button("Run simulation", type="primary"):
+        clean = sequence_input.upper().replace(" ", "").replace("\n", "")
+        if len(clean) < read_length:
+            st.error(f"Sequence must be at least {read_length}bp for this read length.")
+        else:
+            reads = []
+            for _ in range(num_reads):
+                start = random.randint(0, len(clean) - read_length)
+                read = clean[start:start + read_length]
+                noisy = []
+                for base in read:
+                    if random.random() < error_rate:
+                        noisy.append(random.choice([b for b in "ACGT" if b != base]))
+                    else:
+                        noisy.append(base)
+                reads.append("".join(noisy))
+
+            predictions = []
+            confidences = []
+            for read in reads:
+                features, _ = extract_features(read)
+                features_scaled = scaler.transform(features)
+                pred = svm_model.predict(features_scaled)[0]
+                conf = max(svm_model.predict_proba(features_scaled)[0])
+                predictions.append(pred)
+                confidences.append(conf)
+
+            results_df = pd.DataFrame({
+                "Read #": range(1, len(reads) + 1),
+                "Length (bp)": [len(r) for r in reads],
+                "Predicted Species": predictions,
+                "Confidence": [f"{c:.1%}" for c in confidences],
+                "Flag": ["⚠️" if c < 0.60 else "✅" for c in confidences]
+            })
+
+            st.dataframe(results_df, use_container_width=True)
+
+            vote_counts = pd.Series(predictions).value_counts()
+            winner = vote_counts.index[0]
+            win_pct = vote_counts.iloc[0] / len(predictions)
+
+            st.success(f"**Consensus prediction: {winner}** ({win_pct:.0%} of reads agree)")
+            st.caption(f"Average confidence: {np.mean(confidences):.1%} — Error rate applied: {error_rate:.1%}")
+
+            fig, ax = plt.subplots(figsize=(7, 3))
+            vote_counts.plot(kind="bar", ax=ax, color="#5DCAA5", edgecolor="none")
+            ax.set_title("Vote distribution across reads")
+            ax.set_xlabel("Predicted species")
+            ax.set_ylabel("Number of reads")
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close()
